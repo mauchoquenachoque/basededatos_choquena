@@ -1,0 +1,24 @@
+{
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://proyectofinalbasededatos2-production.up.railway.app/api/$1"
+    },
+    {
+      "src": "/health",
+      "dest": "https://proyectofinalbasededatos2-production.up.railway.app/health"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1"
+    },
+    {
+      "src": "/(.*\\.(js|css|svg|png|ico|json|woff|woff2|ttf))",
+      "dest": "/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

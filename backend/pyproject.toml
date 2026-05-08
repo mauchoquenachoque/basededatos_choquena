@@ -1,0 +1,15 @@
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "W", "C", "Q", "B", "B9", "TC"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = 3.12
+strict = true
