@@ -48,10 +48,10 @@ def health_check():
 
 @app.get(f"{settings.API_V1_STR}/meta", tags=["meta"])
 def api_meta():
-    """Expuesto al front para verificar que /api/v1 corresponde a este proyecto (auth email/contraseña)."""
+    """Expuesto al front para verificar que /api/v1 corresponde a este proyecto (auth Google)."""
     return {
         "service": "enmask-backend",
-        "auth": "email_password",
+        "auth": "google",
         "api_prefix": settings.API_V1_STR,
-        "has_register": True,
+        "has_register": False,
     }

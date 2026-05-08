@@ -1,6 +1,6 @@
 export type ConnectionType = 'postgres' | 'mongodb' | 'mysql';
 export type MaskingStrategyType = 'substitution' | 'hashing' | 'redaction' | 'nullification' | 'fpe' | 'perturbation';
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'unmasked';
 
 export interface Connection {
   id: string;
@@ -64,7 +64,6 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'user';
   picture?: string;
 }
 

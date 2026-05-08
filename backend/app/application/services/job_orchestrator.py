@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from app.application.schemas import JobCreate, JobResponse
 from app.core.exceptions import ResourceNotFoundError
@@ -11,7 +11,7 @@ from app.domain.interfaces.repository import ConnectionRepository, JobRepository
 from app.domain.entities.audit_log import AuditLog
 from app.domain.value_objects.database_type import DatabaseType
 from app.infrastructure.db.postgres_client import PostgresClient
-from app.infrastructure.db.mongodb_client import MongoClient
+from app.infrastructure.db.mongodb_client import MongoClient, build_mongo_uri
 from app.infrastructure.db.mysql_client import MySQLClient
 from app.infrastructure.masking.strategies import (
     HashingStrategy,
@@ -31,12 +31,14 @@ class JobOrchestrator:
         job_repository: JobRepository,
         audit_repository: AuditLogRepository = None,
         user_repository: UserRepository = None,
+        vault_repository = None,
     ):
         self._connection_repository = connection_repository
         self._rule_repository = rule_repository
         self._job_repository = job_repository
         self._audit_repository = audit_repository
         self._user_repository = user_repository
+        self._vault_repository = vault_repository
         self._strategies = {
             MaskingAlgorithm.SUBSTITUTION: SubstitutionStrategy(),
             MaskingAlgorithm.HASHING: HashingStrategy(),
@@ -97,20 +99,17 @@ class JobOrchestrator:
                     f"postgresql+asyncpg://{connection.username}:{connection.password}@{connection.host}:{connection.port}/{connection.database}"
                 )
                 client = PostgresClient(dsn)
-                records_processed = await self._process_sql(client, rules)
+                records_processed = await self._process_sql(client, rules, job_id)
             elif connection.type == DatabaseType.MYSQL:
                 dsn = (
                     f"mysql+aiomysql://{connection.username}:{connection.password}@{connection.host}:{connection.port}/{connection.database}"
                 )
                 client = MySQLClient(dsn)
-                records_processed = await self._process_sql(client, rules)
+                records_processed = await self._process_sql(client, rules, job_id)
             else:
-                import urllib.parse
-                enc_user = urllib.parse.quote_plus(connection.username)
-                enc_pass = urllib.parse.quote_plus(connection.password)
-                uri = f"mongodb+srv://{enc_user}:{enc_pass}@{connection.host}/"
+                uri = build_mongo_uri(connection.host, connection.username, connection.password, connection.port)
                 client = MongoClient(uri, connection.database)
-                records_processed = await self._process_mongodb(client, rules)
+                records_processed = await self._process_mongodb(client, rules, job_id)
 
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.utcnow()
@@ -122,7 +121,7 @@ class JobOrchestrator:
             job.completed_at = datetime.utcnow()
             await self._job_repository.update(job_id, job)
 
-    async def _process_sql(self, client, rules: List[MaskingRule]) -> int:
+    async def _process_sql(self, client, rules: List[MaskingRule], job_id: str) -> int:
         tables = {rule.target_table for rule in rules}
         processed = 0
         for table in tables:
@@ -134,11 +133,14 @@ class JobOrchestrator:
             for record in records:
                 updates = self._build_updates(record, table_rules)
                 if updates and pk in record:
+                    if self._vault_repository:
+                        original_data = {col: record[col] for col in updates.keys()}
+                        await self._vault_repository.save_backup(job_id, table, str(record[pk]), original_data)
                     await client.update_record(table, pk, record[pk], updates)
                     processed += 1
         return processed
 
-    async def _process_mongodb(self, client: MongoClient, rules: List[MaskingRule]) -> int:
+    async def _process_mongodb(self, client: MongoClient, rules: List[MaskingRule], job_id: str) -> int:
         collections = {rule.target_table for rule in rules}
         processed = 0
         for collection in collections:
@@ -146,11 +148,71 @@ class JobOrchestrator:
             for record in records:
                 updates = self._build_updates(record, [rule for rule in rules if rule.target_table == collection])
                 if updates:
+                    if self._vault_repository:
+                        original_data = {col: record[col] for col in updates.keys()}
+                        await self._vault_repository.save_backup(job_id, collection, str(record["_id"]), original_data)
                     await client.update_record(collection, record["_id"], updates)
                     processed += 1
         return processed
 
-    async def query_data(self, job_id: str, user_id: str, user_email: str, user_role: str) -> tuple[List[dict], bool]:
+    async def unmask_job(self, job_id: str, owner_id: str) -> None:
+        job = await self._job_repository.get_by_id(job_id)
+        if not job or getattr(job, "owner_id", None) != owner_id:
+            raise ResourceNotFoundError("Job", job_id)
+            
+        if not self._vault_repository:
+            raise Exception("Vault repository not configured, cannot unmask")
+            
+        connection = await self._connection_repository.get_by_id(job.connection_id)
+        if not connection or getattr(connection, "owner_id", None) != owner_id:
+            raise ResourceNotFoundError("Connection", job.connection_id)
+            
+        backups = await self._vault_repository.get_backups_for_job(job_id)
+        if not backups:
+            raise Exception("No backups found for this job, cannot unmask")
+            
+        try:
+            if connection.type == DatabaseType.POSTGRES:
+                dsn = f"postgresql+asyncpg://{connection.username}:{connection.password}@{connection.host}:{connection.port}/{connection.database}"
+                client = PostgresClient(dsn)
+            elif connection.type == DatabaseType.MYSQL:
+                dsn = f"mysql+aiomysql://{connection.username}:{connection.password}@{connection.host}:{connection.port}/{connection.database}"
+                client = MySQLClient(dsn)
+            else:
+                uri = build_mongo_uri(connection.host, connection.username, connection.password, connection.port)
+                client = MongoClient(uri, connection.database)
+
+            # Restore each backup
+            for backup in backups:
+                table = backup["table_name"]
+                pk_value = backup["record_pk"]
+                updates = backup["original_data"]
+                
+                if connection.type in [DatabaseType.POSTGRES, DatabaseType.MYSQL]:
+                    # Need to know the PK column name, usually 'id'
+                    # We might need to guess or do a query, but we can assume 'id' for now or fetch schema.
+                    # As a safe fallback for SQL, we assume the PK is 'id'.
+                    # A robust approach would store the pk column name in vault, but for now we try 'id'
+                    await client.update_record(table, "id", pk_value, updates)
+                else:
+                    await client.update_record(table, pk_value, updates)
+                    
+            await self._vault_repository.delete_backups_for_job(job_id)
+            
+            job.status = JobStatus.UNMASKED
+            await self._job_repository.update(job_id, job)
+            
+        except Exception as exc:
+            job.error_message = f"Unmask failed: {str(exc)}"
+            await self._job_repository.update(job_id, job)
+            raise exc
+
+    async def query_data(self, job_id: str, user_id: str, user_email: str, mask_override: Optional[bool] = None) -> tuple[List[dict], bool]:
+        """Query data with optional mask override.
+        
+        Returns (records, is_owner). If mask_override is provided, it controls masking.
+        Otherwise, owners see unmasked data and shared users see masked.
+        """
         job = await self._job_repository.get_by_id(job_id)
         if not job:
             raise ResourceNotFoundError("Job", job_id)
@@ -160,13 +222,16 @@ class JobOrchestrator:
             raise ResourceNotFoundError("Connection", job.connection_id)
 
         is_owner = getattr(job, "owner_id", None) == user_id
-        is_admin = user_role.lower() == "admin"
         is_shared = user_id in job.shared_with
 
-        if not (is_owner or is_admin or is_shared):
-            raise ResourceNotFoundError("Job", job_id) # Obfuscate existence if not allowed
+        if not (is_owner or is_shared):
+            raise ResourceNotFoundError("Job", job_id)
 
-        show_unmasked = is_owner or is_admin
+        # Determine if data should be masked
+        if mask_override is not None:
+            show_unmasked = not mask_override
+        else:
+            show_unmasked = is_owner
 
         rules: List[MaskingRule] = []
         for rule_id in job.rule_ids:
@@ -184,10 +249,7 @@ class JobOrchestrator:
             client = MySQLClient(dsn)
             records = await self._query_sql(client, rules, show_unmasked)
         else:
-            import urllib.parse
-            enc_user = urllib.parse.quote_plus(connection.username)
-            enc_pass = urllib.parse.quote_plus(connection.password)
-            uri = f"mongodb+srv://{enc_user}:{enc_pass}@{connection.host}/"
+            uri = build_mongo_uri(connection.host, connection.username, connection.password, connection.port)
             client = MongoClient(uri, connection.database)
             records = await self._query_mongodb(client, rules, show_unmasked)
 
@@ -196,14 +258,14 @@ class JobOrchestrator:
                 job_id=job_id,
                 user_id=user_id,
                 user_email=user_email,
-                user_role=user_role,
+                user_role=None,
                 action="query",
                 is_masked=not show_unmasked,
                 timestamp=datetime.utcnow()
             )
             await self._audit_repository.create(audit_log)
 
-        return records, show_unmasked
+        return records, is_owner
 
     async def share_job(self, job_id: str, owner_id: str, target_email: str) -> None:
         job = await self._job_repository.get_by_id(job_id)
@@ -221,12 +283,12 @@ class JobOrchestrator:
             job.shared_with.append(target_user.id)
             await self._job_repository.update(job_id, job)
 
-    async def get_audit_log(self, job_id: str, owner_id: str, user_role: str) -> List[AuditLog]:
+    async def get_audit_log(self, job_id: str, owner_id: str) -> List[AuditLog]:
         job = await self._job_repository.get_by_id(job_id)
         if not job:
             raise ResourceNotFoundError("Job", job_id)
 
-        if getattr(job, "owner_id", None) != owner_id and user_role.lower() != "admin":
+        if getattr(job, "owner_id", None) != owner_id:
             raise ResourceNotFoundError("Job", job_id)
 
         if not self._audit_repository:

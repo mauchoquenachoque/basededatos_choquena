@@ -1,5 +1,28 @@
 import motor.motor_asyncio
 from typing import List, Dict, Any
+from urllib.parse import quote_plus
+
+
+def build_mongo_uri(host: str, username: str, password: str, port: int | None = None) -> str:
+    host = host.strip()
+    enc_user = quote_plus(username)
+    enc_pass = quote_plus(password)
+
+    if host.startswith("mongodb+srv://") or host.startswith("mongodb://"):
+        scheme, endpoint = host.split("://", 1)
+        return f"{scheme}://{enc_user}:{enc_pass}@{endpoint}"
+
+    if host.endswith(".mongodb.net"):
+        return f"mongodb+srv://{enc_user}:{enc_pass}@{host}"
+
+    if ":" in host:
+        return f"mongodb://{enc_user}:{enc_pass}@{host}"
+
+    if port:
+        return f"mongodb://{enc_user}:{enc_pass}@{host}:{port}"
+
+    return f"mongodb://{enc_user}:{enc_pass}@{host}"
+
 
 class MongoClient:
     def __init__(self, uri: str, database: str):

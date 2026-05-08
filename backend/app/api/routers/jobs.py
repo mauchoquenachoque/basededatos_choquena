@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query
-from typing import List
+from typing import List, Optional
 from app.api.deps import get_current_active_user, get_job_orchestrator
 from app.application.schemas import JobCreate, JobResponse, DynamicQueryResponse, JobShareRequest, AuditLogEntry
 from app.application.services.job_orchestrator import JobOrchestrator
@@ -38,7 +38,7 @@ async def get_job(
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.post("/{job_id}/run", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{job_id}/run")
 async def run_job(
     job_id: str,
     background_tasks: BackgroundTasks,
@@ -46,25 +46,43 @@ async def run_job(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        # Validate job exists
         await orchestrator.get_job(job_id, current_user.id)
+        # Run in background to avoid blocking
+        background_tasks.add_task(orchestrator.run_job, job_id, current_user.id)
+        return {"message": "Job execution started"}
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    background_tasks.add_task(orchestrator.run_job, job_id, current_user.id)
-    return {"message": "Job execution started in the background."}
-
-@router.get("/{job_id}/query", response_model=DynamicQueryResponse)
-async def query_job_data(
+@router.post("/{job_id}/unmask")
+async def unmask_job(
     job_id: str,
+    background_tasks: BackgroundTasks,
     orchestrator: JobOrchestrator = Depends(get_job_orchestrator),
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        records, show_unmasked = await orchestrator.query_data(job_id, current_user.id, current_user.email, current_user.role)
+        await orchestrator.get_job(job_id, current_user.id)
+        background_tasks.add_task(orchestrator.unmask_job, job_id, current_user.id)
+        return {"message": "Job unmasking started"}
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/{job_id}/query", response_model=DynamicQueryResponse)
+async def query_job_data(
+    job_id: str,
+    mask: bool = Query(None),
+    orchestrator: JobOrchestrator = Depends(get_job_orchestrator),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Query job data with optional mask parameter. If mask=true, apply masking. If mask=false, show original data.
+    If mask is not provided, use owner-based default: owners see unmasked, others see masked."""
+    try:
+        records, is_owner = await orchestrator.query_data(job_id, current_user.id, current_user.email, mask_override=mask)
         return DynamicQueryResponse(
             data=records,
             total_records=len(records),
-            is_masked=not show_unmasked
+            is_masked=mask if mask is not None else not is_owner
         )
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -91,6 +109,6 @@ async def get_audit_log(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        return await orchestrator.get_audit_log(job_id, current_user.id, current_user.role)
+        return await orchestrator.get_audit_log(job_id, current_user.id)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

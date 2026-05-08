@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     POSTGRES_META_DSN: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/enmask_meta"
     MONGODB_META_URI: str = "mongodb://mongodb:27017"
     METADATA_DATABASE: str = "enmask_meta"
+    GOOGLE_CLIENT_ID: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 

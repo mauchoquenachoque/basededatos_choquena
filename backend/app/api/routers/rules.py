@@ -34,6 +34,18 @@ async def get_rule(
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+@router.put("/{rule_id}", response_model=RuleResponse)
+async def update_rule(
+    rule_id: str,
+    data: RuleCreate,
+    service: MaskingService = Depends(get_masking_service),
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        return await service.update_rule(rule_id, data, current_user.id)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rule(
     rule_id: str,

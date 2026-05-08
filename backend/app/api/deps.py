@@ -20,6 +20,8 @@ from app.infrastructure.repositories.postgres_connection_repo import PostgresCon
 from app.infrastructure.repositories.user_repository import user_repository
 from app.infrastructure.repositories.mongo_user_repo import MongoUserRepository
 from app.infrastructure.repositories.audit_repo import MongoAuditRepository
+from app.domain.interfaces.vault_repository import VaultRepository
+from app.infrastructure.repositories.vault_repo import MongoVaultRepository, memory_vault_repository
 
 
 async def get_connection_repository() -> ConnectionRepository:
@@ -52,6 +54,11 @@ async def get_audit_repository() -> AuditLogRepository:
     return None
 
 
+async def get_vault_repository() -> VaultRepository:
+    if settings.REPOSITORY_BACKEND == "mongodb":
+        return MongoVaultRepository(settings.MONGODB_META_URI, settings.METADATA_DATABASE)
+    return memory_vault_repository
+
 async def get_connection_service(
     repository: ConnectionRepository = Depends(get_connection_repository),
 ) -> ConnectionService:
@@ -71,6 +78,7 @@ async def get_job_orchestrator(
     job_repository: JobRepository = Depends(get_job_repository),
     audit_repository: AuditLogRepository = Depends(get_audit_repository),
     user_repository: UserRepository = Depends(get_user_repository),
+    vault_repository: VaultRepository = Depends(get_vault_repository),
 ) -> JobOrchestrator:
     return JobOrchestrator(
         connection_repository=connection_repository,
@@ -78,6 +86,7 @@ async def get_job_orchestrator(
         job_repository=job_repository,
         audit_repository=audit_repository,
         user_repository=user_repository,
+        vault_repository=vault_repository,
     )
 
 
@@ -117,11 +126,7 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
 
 def require_role(role: str):
     async def dependency(user: User = Depends(get_current_active_user)) -> User:
-        if user.role != role:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User does not have the required role.",
-            )
+        # Roles were removed — keep this dependency for compatibility but do not enforce role checks.
         return user
     return dependency
 

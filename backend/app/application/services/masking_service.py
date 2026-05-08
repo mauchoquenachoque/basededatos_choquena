@@ -21,6 +21,19 @@ class MaskingService:
         created = await self._repository.create(rule)
         return RuleResponse.model_validate(created.model_dump())
 
+    async def update_rule(self, id: str, data: RuleCreate, owner_id: str) -> RuleResponse:
+        rule = await self._repository.get_by_id(id)
+        if not rule or getattr(rule, "owner_id", None) != owner_id:
+            raise ResourceNotFoundError("Rule", id)
+        
+        connection = await self._connection_repository.get_by_id(data.connection_id)
+        if not connection or getattr(connection, "owner_id", None) != owner_id:
+            raise ResourceNotFoundError("Connection", data.connection_id)
+        
+        updated_rule = MaskingRule(**data.model_dump(), id=id, owner_id=owner_id)
+        updated = await self._repository.update(id, updated_rule)
+        return RuleResponse.model_validate(updated.model_dump())
+
     async def get_all_rules(self, owner_id: str) -> List[RuleResponse]:
         rules = await self._repository.get_all()
         owned_rules = [r for r in rules if getattr(r, "owner_id", None) == owner_id]

@@ -11,6 +11,14 @@ from app.domain.entities.user import User
 from app.domain.interfaces.repository import UserRepository
 from app.infrastructure.repositories.user_repository import user_repository
 
+# Optional Google token verification
+try:
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+except Exception:
+    google_id_token = None
+    google_requests = None
+
 
 def _base64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("utf-8")
@@ -32,17 +40,16 @@ class AuthService:
         return await self._repository.get_by_email(email)
 
     async def register_local(self, email: str, password: str, name: str) -> Dict[str, object]:
+        # Local registration kept for compatibility but no roles assigned
         normalized = email.strip().lower()
         if await self.get_user_by_email(normalized):
             raise ValueError("EMAIL_TAKEN")
 
         display_name = name.strip() or normalized.split("@")[0]
-        role = "admin" if normalized in {e.strip().lower() for e in settings.admin_emails_list()} else "user"
 
         user = User(
             email=normalized,
             name=display_name,
-            role=role,
             picture=None,
             password_hash=hash_password(password),
         )
@@ -56,11 +63,43 @@ class AuthService:
             raise ValueError("INVALID_CREDENTIALS")
         return self._issue_auth_payload(user)
 
+    async def authenticate_google(self, token: str) -> Dict[str, object]:
+        if google_id_token is None or google_requests is None:
+            raise ValueError("Google auth support not installed on server.")
+        try:
+            claims = google_id_token.verify_oauth2_token(token, google_requests.Request(), settings.GOOGLE_CLIENT_ID or None)
+        except Exception as exc:
+            raise ValueError("INVALID_GOOGLE_TOKEN") from exc
+
+        email = claims.get("email")
+        name = claims.get("name") or email.split("@")[0]
+        picture = claims.get("picture")
+        if not email:
+            raise ValueError("GOOGLE_TOKEN_MISSING_EMAIL")
+
+        normalized = email.strip().lower()
+        user = await self.get_user_by_email(normalized)
+        if not user:
+            user = User(email=normalized, name=name, picture=picture)
+            user = await self._repository.create(user)
+        else:
+            # update picture/name if changed
+            changed = False
+            if picture and getattr(user, 'picture', None) != picture:
+                user.picture = picture
+                changed = True
+            if name and getattr(user, 'name', None) != name:
+                user.name = name
+                changed = True
+            if changed:
+                await self._repository.update(user.id, user)
+
+        return self._issue_auth_payload(user)
+
     def _issue_auth_payload(self, user: User) -> Dict[str, object]:
         access_token = self.create_access_token(
             subject=user.id or "",
             email=user.email,
-            role=user.role,
         )
         return {
             "access_token": access_token,
@@ -68,7 +107,7 @@ class AuthService:
             "user": user,
         }
 
-    def create_access_token(self, subject: str, email: str, role: str, expires_in: int = 3600) -> str:
+    def create_access_token(self, subject: str, email: str, expires_in: int = 3600) -> str:
         if not settings.SECRET_KEY:
             raise ValueError("SECRET_KEY is not configured.")
 
@@ -76,7 +115,6 @@ class AuthService:
         payload = {
             "sub": subject,
             "email": email,
-            "role": role,
             "exp": int(time.time()) + expires_in,
         }
         header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":")).encode())

@@ -108,6 +108,12 @@ export const loginWithPassword = (email: string, password: string) =>
     body: JSON.stringify({ email, password }),
   });
 
+export const loginWithGoogle = (id_token: string) =>
+  request<AuthResponse>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ id_token }),
+  });
+
 export const getCurrentUser = () => request<User>('/auth/me');
 
 // ---- Connections ----
@@ -123,6 +129,8 @@ export const discoverPii = (id: string) =>
 export const getRules = () => request<MaskingRule[]>('/rules/');
 export const createRule = (data: RuleCreate) =>
   request<MaskingRule>('/rules/', { method: 'POST', body: JSON.stringify(data) });
+export const updateRule = (id: string, data: RuleCreate) =>
+  request<MaskingRule>(`/rules/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteRule = (id: string) =>
   request<void>(`/rules/${id}`, { method: 'DELETE' });
 
@@ -132,9 +140,13 @@ export const createJob = (data: JobCreate) =>
   request<MaskingJob>('/jobs/', { method: 'POST', body: JSON.stringify(data) });
 export const runJob = (id: string) =>
   request<{ message: string }>(`/jobs/${id}/run`, { method: 'POST' });
+export const unmaskJob = (id: string) =>
+  request<{ message: string }>(`/jobs/${id}/unmask`, { method: 'POST' });
 export const getJob = (id: string) => request<MaskingJob>(`/jobs/${id}`);
-export const queryJob = (id: string) =>
-  request<DynamicQueryResponse>(`/jobs/${id}/query`);
+export const queryJob = (id: string, mask?: boolean) => {
+  const url = mask !== undefined ? `/jobs/${id}/query?mask=${mask}` : `/jobs/${id}/query`;
+  return request<DynamicQueryResponse>(url);
+};
 export const shareJob = (id: string, email: string) =>
   request<{ message: string }>(`/jobs/${id}/share`, { method: 'POST', body: JSON.stringify({ email }) });
 export const getAuditLog = (id: string) =>

@@ -52,7 +52,7 @@ class AuditLogEntry(BaseModel):
     job_id: str
     user_id: str
     user_email: str
-    user_role: str
+    user_role: Optional[str] = None
     action: str
     is_masked: bool
     timestamp: datetime
@@ -72,7 +72,6 @@ class UserResponse(BaseModel):
     id: str
     email: str
     name: str
-    role: str
     picture: Optional[str] = None
 
 class AuthResponse(BaseModel):

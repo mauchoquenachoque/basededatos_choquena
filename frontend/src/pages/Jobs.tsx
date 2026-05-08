@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getJobs, createJob, runJob, getJob, getConnections, getRules, queryJob, shareJob, getAuditLog } from '../services/api';
+import { getJobs, createJob, runJob, unmaskJob, getJob, getConnections, getRules, queryJob, shareJob, getAuditLog } from '../services/api';
 import type { MaskingJob, JobCreate, Connection, MaskingRule, JobStatus, AuditLogEntry } from '../types';
 import type { ToastType } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -11,6 +11,7 @@ const statusBadge: Record<JobStatus, string> = {
   running:   'badge-warning',
   completed: 'badge-success',
   failed:    'badge-danger',
+  unmasked:  'badge-info',
 };
 
 function formatDate(d: string | null) {
@@ -30,12 +31,13 @@ export default function Jobs({ addToast }: Props) {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState<Set<string>>(new Set());
   
-  // DDM Preview state
+  // DDM Preview state with mask toggle
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewData, setPreviewData] = useState<Record<string, unknown>[]>([]);
   const [previewIsMasked, setPreviewIsMasked] = useState<boolean>(false);
   const [previewingJob, setPreviewingJob] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMaskPreference, setPreviewMaskPreference] = useState<boolean>(true); // true = masked by default
 
   // Share state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -110,21 +112,61 @@ export default function Jobs({ addToast }: Props) {
     }
   };
 
+  const handleUnmask = async (job: MaskingJob) => {
+    setRunning(prev => new Set(prev).add(job.id));
+    try {
+      await unmaskJob(job.id);
+      addToast('Job unmasking started in background', 'info');
+      const poll = async () => {
+        const updated = await getJob(job.id);
+        setJobs(prev => prev.map(j => j.id === job.id ? updated : j));
+        if (updated.status === 'completed' || updated.status === 'running' || updated.status === 'pending') {
+          setTimeout(poll, 2000);
+        } else {
+          setRunning(prev => { const s = new Set(prev); s.delete(job.id); return s; });
+          if (updated.status === 'unmasked')
+            addToast(`Job unmasked successfully`, 'success');
+          else if (updated.status === 'failed')
+            addToast(`Unmask failed: ${updated.error_message}`, 'error');
+        }
+      };
+      setTimeout(poll, 1500);
+    } catch (err: unknown) {
+      addToast((err as Error).message ?? 'Failed to unmask job', 'error');
+      setRunning(prev => { const s = new Set(prev); s.delete(job.id); return s; });
+    }
+  };
   const handlePreview = async (jobId: string) => {
     setPreviewingJob(jobId);
     setShowPreviewModal(true);
     setPreviewLoading(true);
     setPreviewData([]);
-    setPreviewIsMasked(false);
+    setPreviewMaskPreference(true); // Default: show masked
     
     try {
-      const response = await queryJob(jobId);
+      const response = await queryJob(jobId, true); // Default to masked
       setPreviewData(response.data || []);
       setPreviewIsMasked(response.is_masked);
-      addToast(`Showing data (${response.is_masked ? 'Masked for normal user' : 'Unmasked for Owner/Admin'})`, 'info');
     } catch (err: unknown) {
       addToast((err as Error).message ?? 'Failed to query data', 'error');
       setShowPreviewModal(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleToggleMasking = async () => {
+    if (!previewingJob) return;
+    setPreviewLoading(true);
+    try {
+      const newMaskPref = !previewMaskPreference;
+      const response = await queryJob(previewingJob, newMaskPref);
+      setPreviewData(response.data || []);
+      setPreviewIsMasked(response.is_masked);
+      setPreviewMaskPreference(newMaskPref);
+      addToast(`Data ${newMaskPref ? 'masked' : 'unmasked'}`, 'info');
+    } catch (err: unknown) {
+      addToast((err as Error).message ?? 'Failed to toggle masking', 'error');
     } finally {
       setPreviewLoading(false);
     }
@@ -211,6 +253,28 @@ export default function Jobs({ addToast }: Props) {
                     <td style={{ fontSize: 12 }}>{formatDate(j.completed_at)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px' }}>
+                        {j.status !== 'running' && (
+                          <button
+                            className="btn btn-primary"
+                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                            onClick={() => handleRun(j)}
+                            disabled={running.has(j.id)}
+                            title="Run Masking"
+                          >
+                            {running.has(j.id) ? '⌛' : '▶ Run'}
+                          </button>
+                        )}
+                        {j.status === 'completed' && (
+                          <button
+                            className="btn btn-warning"
+                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                            onClick={() => handleUnmask(j)}
+                            disabled={running.has(j.id)}
+                            title="Restore Original Data"
+                          >
+                            {running.has(j.id) ? '⌛' : '↺ Unmask'}
+                          </button>
+                        )}
                         <button
                           className="btn btn-secondary"
                           onClick={() => handlePreview(j.id)}
@@ -218,7 +282,7 @@ export default function Jobs({ addToast }: Props) {
                         >
                           👁 Query DDM
                         </button>
-                        {(user?.id === j.owner_id || user?.role === 'admin') && (
+                        {(user?.id === j.owner_id) && (
                           <>
                             <button
                               className="btn btn-secondary"
@@ -235,17 +299,6 @@ export default function Jobs({ addToast }: Props) {
                               📋 Audit Log
                             </button>
                           </>
-                        )}
-                        {(j.status === 'pending' || j.status === 'failed') && (
-                          <button
-                            id={`btn-run-job-${j.id}`}
-                            className="btn btn-success"
-                            disabled={running.has(j.id)}
-                            onClick={() => handleRun(j)}
-                            title="Apply masks permanently to the database (Static Data Masking)"
-                          >
-                            {running.has(j.id) ? <><span className="spinner" /> Running…</> : '▶ Permanent SDM'}
-                          </button>
                         )}
                       </div>
                     </td>
@@ -361,6 +414,13 @@ export default function Jobs({ addToast }: Props) {
               )}
             </div>
             <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleToggleMasking}
+                disabled={previewLoading || previewData.length === 0}
+              >
+                {previewMaskPreference ? '🔒 Hide Masking' : '👁 Apply Masking'}
+              </button>
               <button className="btn btn-secondary" onClick={() => setShowPreviewModal(false)}>Close</button>
             </div>
           </div>
@@ -420,7 +480,6 @@ export default function Jobs({ addToast }: Props) {
                       <tr>
                         <th>Date</th>
                         <th>User Email</th>
-                        <th>Role</th>
                         <th>Action</th>
                         <th>Data Masked?</th>
                       </tr>
@@ -430,7 +489,6 @@ export default function Jobs({ addToast }: Props) {
                         <tr key={log.id}>
                           <td>{formatDate(log.timestamp)}</td>
                           <td>{log.user_email}</td>
-                          <td>{log.user_role}</td>
                           <td>{log.action}</td>
                           <td>
                             <span className={`badge ${log.is_masked ? 'badge-warning' : 'badge-success'}`}>

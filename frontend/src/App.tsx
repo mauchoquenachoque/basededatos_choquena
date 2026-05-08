@@ -11,10 +11,10 @@ import { AuthProvider, ProtectedRoute, useAuth } from './hooks/useAuth';
 import { RESOLVED_API_BASE } from './services/api';
 
 const topbarMeta: Record<string, { title: string; desc: string }> = {
-  '/':            { title: 'Dashboard',      desc: 'Platform overview and quick stats' },
-  '/connections': { title: 'Connections',    desc: 'Manage your PostgreSQL and MongoDB database connections' },
-  '/rules':       { title: 'Masking Rules',  desc: 'Define deterministic masking rules per column' },
-  '/jobs':        { title: 'Jobs',           desc: 'Run and monitor masking jobs' },
+  '/': { title: 'Dashboard', desc: 'Platform overview and quick stats' },
+  '/connections': { title: 'Connections', desc: 'Manage your PostgreSQL and MongoDB database connections' },
+  '/rules': { title: 'Masking Rules', desc: 'Define deterministic masking rules per column' },
+  '/jobs': { title: 'Jobs', desc: 'Run and monitor masking jobs' },
 };
 
 function Topbar() {
@@ -36,7 +36,6 @@ function Topbar() {
         {user && (
           <div className="user-badge">
             <span>{user.name}</span>
-            <small>{user.role}</small>
             <button className="btn btn-clear" onClick={logout}>Cerrar sesión</button>
           </div>
         )}

@@ -7,7 +7,7 @@ from app.domain.interfaces.repository import ConnectionRepository
 from app.infrastructure.repositories.memory_repository import connection_repository
 from app.domain.value_objects.database_type import DatabaseType
 from app.infrastructure.db.postgres_client import PostgresClient
-from app.infrastructure.db.mongodb_client import MongoClient
+from app.infrastructure.db.mongodb_client import MongoClient, build_mongo_uri
 from app.infrastructure.db.mysql_client import MySQLClient
 from app.domain.services.pii_detector import pii_detector
 from app.application.schemas import RuleCreate
@@ -56,10 +56,7 @@ class ConnectionService:
             client = MySQLClient(dsn)
             schema = await client.get_schema()
         else:
-            import urllib.parse
-            enc_user = urllib.parse.quote_plus(connection.username)
-            enc_pass = urllib.parse.quote_plus(connection.password)
-            uri = f"mongodb+srv://{enc_user}:{enc_pass}@{connection.host}/"
+            uri = build_mongo_uri(connection.host, connection.username, connection.password, connection.port)
             client = MongoClient(uri, connection.database)
             schema = await client.get_schema()
 

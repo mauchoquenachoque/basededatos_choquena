@@ -5,44 +5,48 @@
 /* --- Inter font (loaded in index.html) --- */
 :root {
   /* Color Tokens */
-  --color-bg:        #0a0d14;
-  --color-surface:   #111827;
+  --color-bg: #0a0d14;
+  --color-surface: #111827;
   --color-surface-2: #1c2333;
-  --color-border:    #252e45;
-  --color-accent:    #6366f1;
-  --color-accent-2:  #818cf8;
-  --color-success:   #22d3a5;
-  --color-warning:   #f59e0b;
-  --color-danger:    #f43f5e;
-  --color-pending:   #64748b;
+  --color-border: #252e45;
+  --color-accent: #6366f1;
+  --color-accent-2: #818cf8;
+  --color-success: #22d3a5;
+  --color-warning: #f59e0b;
+  --color-danger: #f43f5e;
+  --color-pending: #64748b;
 
   /* Text */
-  --text-primary:    #f1f5f9;
-  --text-secondary:  #94a3b8;
-  --text-muted:      #475569;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
 
   /* Spacing */
-  --radius-sm:  6px;
-  --radius-md:  10px;
-  --radius-lg:  16px;
-  --radius-xl:  24px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
   /* Shadows */
-  --shadow-glow:   0 0 24px rgba(99, 102, 241, 0.15);
-  --shadow-card:   0 4px 24px rgba(0, 0, 0, 0.4);
-  --shadow-modal:  0 20px 60px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.15);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.6);
 
   /* Transitions */
-  --transition:  all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+}
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -54,10 +58,22 @@ body {
 }
 
 /* ---- Scrollbar ---- */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--color-bg); }
-::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
 
 /* ---- Layout ---- */
 .app-shell {
@@ -338,7 +354,10 @@ body {
   border-radius: var(--radius-sm);
 }
 
-.btn svg { width: 16px; height: 16px; }
+.btn svg {
+  width: 16px;
+  height: 16px;
+}
 
 /* ---- Cards ---- */
 .card {
@@ -425,20 +444,50 @@ td .cell-primary {
   border-radius: 50%;
 }
 
-.badge-success { background: rgba(34, 211, 165, 0.12); color: var(--color-success); }
-.badge-success::before { background: var(--color-success); }
+.badge-success {
+  background: rgba(34, 211, 165, 0.12);
+  color: var(--color-success);
+}
 
-.badge-danger { background: rgba(244, 63, 94, 0.12); color: var(--color-danger); }
-.badge-danger::before { background: var(--color-danger); }
+.badge-success::before {
+  background: var(--color-success);
+}
 
-.badge-warning { background: rgba(245, 158, 11, 0.12); color: var(--color-warning); }
-.badge-warning::before { background: var(--color-warning); }
+.badge-danger {
+  background: rgba(244, 63, 94, 0.12);
+  color: var(--color-danger);
+}
 
-.badge-pending { background: rgba(100, 116, 139, 0.12); color: var(--color-pending); }
-.badge-pending::before { background: var(--color-pending); }
+.badge-danger::before {
+  background: var(--color-danger);
+}
 
-.badge-info { background: rgba(99, 102, 241, 0.12); color: var(--color-accent-2); }
-.badge-info::before { background: var(--color-accent-2); }
+.badge-warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--color-warning);
+}
+
+.badge-warning::before {
+  background: var(--color-warning);
+}
+
+.badge-pending {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--color-pending);
+}
+
+.badge-pending::before {
+  background: var(--color-pending);
+}
+
+.badge-info {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--color-accent-2);
+}
+
+.badge-info::before {
+  background: var(--color-accent-2);
+}
 
 /* ---- Modal ---- */
 .modal-overlay {
@@ -607,28 +656,57 @@ td .cell-primary {
   animation: slideLeft 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.toast.toast-success { border-left: 3px solid var(--color-success); }
-.toast.toast-error   { border-left: 3px solid var(--color-danger); }
-.toast.toast-info    { border-left: 3px solid var(--color-accent); }
+.toast.toast-success {
+  border-left: 3px solid var(--color-success);
+}
+
+.toast.toast-error {
+  border-left: 3px solid var(--color-danger);
+}
+
+.toast.toast-info {
+  border-left: 3px solid var(--color-accent);
+}
 
 /* ---- Animations ---- */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes slideLeft {
-  from { opacity: 0; transform: translateX(24px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner {
@@ -643,12 +721,18 @@ td .cell-primary {
 
 /* ---- Responsive ---- */
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 1fr; }
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: relative;
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--color-border);
   }
-  .form-grid-2 { grid-template-columns: 1fr; }
+
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
 }

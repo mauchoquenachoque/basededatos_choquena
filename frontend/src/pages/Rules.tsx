@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getRules, createRule, deleteRule, getConnections } from '../services/api';
+import { getRules, createRule, updateRule, deleteRule, getConnections } from '../services/api';
 import type { MaskingRule, RuleCreate, Connection } from '../types';
 import type { ToastType } from '../hooks/useToast';
 
@@ -26,6 +26,7 @@ export default function Rules({ addToast }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<RuleCreate>(defaultForm);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -41,17 +42,42 @@ export default function Rules({ addToast }: Props) {
   const getConnectionName = (id: string) =>
     connections.find(c => c.id === id)?.name ?? id.slice(0, 8) + '…';
 
+  const openNewModal = () => {
+    setEditingId(null);
+    setForm(defaultForm);
+    setShowModal(true);
+  };
+
+  const openEditModal = (rule: MaskingRule) => {
+    setEditingId(rule.id);
+    setForm({
+      name: rule.name,
+      connection_id: rule.connection_id,
+      target_table: rule.target_table,
+      target_column: rule.target_column,
+      strategy: rule.strategy,
+      strategy_options: rule.strategy_options || {}
+    });
+    setShowModal(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await createRule(form);
-      addToast('Rule created successfully', 'success');
+      if (editingId) {
+        await updateRule(editingId, form);
+        addToast('Rule updated successfully', 'success');
+      } else {
+        await createRule(form);
+        addToast('Rule created successfully', 'success');
+      }
       setShowModal(false);
       setForm(defaultForm);
+      setEditingId(null);
       load();
     } catch (err: unknown) {
-      addToast((err as Error).message ?? 'Failed to create rule', 'error');
+      addToast((err as Error).message ?? `Failed to ${editingId ? 'update' : 'create'} rule`, 'error');
     } finally { setSaving(false); }
   };
 
@@ -69,7 +95,7 @@ export default function Rules({ addToast }: Props) {
       <div className="card">
         <div className="card-header">
           <h2>Masking Rules</h2>
-          <button id="btn-add-rule" className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button id="btn-add-rule" className="btn btn-primary" onClick={openNewModal}>
             + New Rule
           </button>
         </div>
@@ -81,7 +107,7 @@ export default function Rules({ addToast }: Props) {
             <div className="empty-icon">◉</div>
             <h3>No masking rules yet</h3>
             <p>Create a rule to define how a specific column should be masked.</p>
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create Rule</button>
+            <button className="btn btn-primary" onClick={openNewModal}>Create Rule</button>
           </div>
         ) : (
           <div className="table-wrapper">
@@ -106,7 +132,10 @@ export default function Rules({ addToast }: Props) {
                     <td>
                       <span className="badge badge-info">{strategyLabels[r.strategy] ?? r.strategy}</span>
                     </td>
-                    <td>
+                    <td style={{ display: 'flex', gap: '8px' }}>
+                      <button className="btn btn-secondary btn-icon" 
+                        onClick={() => openEditModal(r)} 
+                        title="Edit rule">✎</button>
                       <button className="btn btn-danger btn-icon" id={`btn-del-rule-${r.id}`}
                         onClick={() => handleDelete(r.id)} title="Delete rule">✕</button>
                     </td>
@@ -122,7 +151,7 @@ export default function Rules({ addToast }: Props) {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>New Masking Rule</h2>
+              <h2>{editingId ? 'Edit Masking Rule' : 'New Masking Rule'}</h2>
               <button className="modal-close" id="btn-close-rule-modal" onClick={() => setShowModal(false)}>×</button>
             </div>
             <form onSubmit={handleSubmit}>
