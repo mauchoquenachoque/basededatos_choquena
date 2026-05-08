@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: enmask_meta
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:6
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+      - mongodb
+    environment:
+      - REPOSITORY_BACKEND=memory
+      - API_V1_STR=/api/v1
+      - BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
+      - POSTGRES_META_DSN=postgresql+asyncpg://postgres:postgres@postgres:5432/enmask_meta
+      - MONGODB_META_URI=mongodb://mongodb:27017
+      - METADATA_DATABASE=enmask_meta
+      - API_KEY=supersecret
+    ports:
+      - 8000:8000
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - 5173:5173
+    volumes:
+      - ./frontend:/app
+    environment:
+      - VITE_BACKEND_PROXY_URL=http://backend:8000
+
+volumes:
+  postgres_data:
+  mongo_data:
